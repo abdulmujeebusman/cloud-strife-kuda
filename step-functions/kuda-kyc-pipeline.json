@@ -1,0 +1,61 @@
+{
+  "Comment": "Cloud Strife — Kuda Bank KYC Pipeline",
+  "StartAt": "ValidateUploads",
+  "States": {
+    "ValidateUploads": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:eu-west-1:650270877421:function:kuda-kyc-validate-uploads",
+      "Next": "CompareFaces",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "UploadError"
+        }
+      ]
+    },
+    "CompareFaces": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:eu-west-1:650270877421:function:kuda-kyc-compare-faces",
+      "Next": "KYCDecision",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "ProcessingError"
+        }
+      ]
+    },
+    "KYCDecision": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.similarity",
+          "NumericGreaterThanEquals": 80,
+          "Next": "ApproveKYC"
+        }
+      ],
+      "Default": "FlagIdentityMismatch"
+    },
+    "ApproveKYC": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:eu-west-1:650270877421:function:kuda-kyc-update-status",
+      "End": true
+    },
+    "FlagIdentityMismatch": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:eu-west-1:650270877421:function:kuda-kyc-update-status",
+      "End": true
+    },
+    "UploadError": {
+      "Type": "Fail",
+      "Cause": "Uploads missing in S3"
+    },
+    "ProcessingError": {
+      "Type": "Fail",
+      "Cause": "Rekognition error"
+    }
+  }
+}
