@@ -8,7 +8,7 @@ A production-grade AWS cloud architecture prototype for a Nigerian neobank, buil
 
 ## Architecture Overview
 
-![Cloud Strife Architecture](architecture/kuda-architecture.png)
+![Cloud Strife Architecture](architecture/Cloud Strife Achitectural Diagram-Page 1.draw.io.png)
 
 **6 Layers:** Presentation · Application · Security · Data · Compute · Observability  
 **29 AWS Services** · Region: `eu-west-1` (Ireland)  
