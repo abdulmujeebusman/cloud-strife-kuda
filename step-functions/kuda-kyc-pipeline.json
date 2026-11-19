@@ -1,39 +1,68 @@
 {
-    "Comment": "Cloud Strife — Kuda Bank KYC Pipeline",
+    "Comment": "Cloud Strife — Kuda Bank KYC Pipeline. Lambda ARN placeholders are filled in by Terraform (infra/terraform).",
     "StartAt": "ValidateUploads",
     "States": {
         "ValidateUploads": {
             "Type": "Task",
-            "Resource": "arn:aws:lambda:eu-west-1:650270877421:function:kuda-kyc-validate-uploads",
+            "Resource": "${validate_uploads_arn}",
             "Next": "CompareFaces",
-            "Catch": [
+            "Retry": [
                 {
                     "ErrorEquals": [
-                        "States.ALL"
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
                     ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2
+                }
+            ],
+            "Catch": [
+                {
+                    "ErrorEquals": ["KYCDocumentsMissing"],
                     "Next": "UploadError"
+                },
+                {
+                    "ErrorEquals": ["States.ALL"],
+                    "Next": "ProcessingError"
                 }
             ]
         },
         "CompareFaces": {
             "Type": "Task",
-            "Resource": "arn:aws:lambda:eu-west-1:650270877421:function:kuda-kyc-compare-faces",
+            "Resource": "${compare_faces_arn}",
             "Next": "KYCDecision",
-            "Catch": [
+            "Retry": [
                 {
                     "ErrorEquals": [
-                        "States.ALL"
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException",
+                        "ThrottlingException",
+                        "ProvisionedThroughputExceededException"
                     ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2
+                }
+            ],
+            "Catch": [
+                {
+                    "ErrorEquals": ["States.ALL"],
                     "Next": "ProcessingError"
                 }
             ]
         },
         "KYCDecision": {
             "Type": "Choice",
+            "Comment": "The similarity threshold is applied once, in kyc_compare_faces; this state only reads the result.",
             "Choices": [
                 {
-                    "Variable": "$.similarity",
-                    "NumericGreaterThanEquals": 80,
+                    "Variable": "$.faceMatch",
+                    "BooleanEquals": true,
                     "Next": "ApproveKYC"
                 }
             ],
@@ -41,21 +70,49 @@
         },
         "ApproveKYC": {
             "Type": "Task",
-            "Resource": "arn:aws:lambda:eu-west-1:650270877421:function:kuda-kyc-update-status",
+            "Resource": "${update_status_arn}",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2
+                }
+            ],
             "End": true
         },
         "FlagIdentityMismatch": {
             "Type": "Task",
-            "Resource": "arn:aws:lambda:eu-west-1:650270877421:function:kuda-kyc-update-status",
+            "Resource": "${update_status_arn}",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 2,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2
+                }
+            ],
             "End": true
         },
         "UploadError": {
             "Type": "Fail",
+            "Error": "KYCDocumentsMissing",
             "Cause": "Uploads missing in S3"
         },
         "ProcessingError": {
             "Type": "Fail",
-            "Cause": "Rekognition error"
+            "Error": "KYCProcessingError",
+            "Cause": "Unexpected error while validating uploads or comparing faces"
         }
     }
 }
