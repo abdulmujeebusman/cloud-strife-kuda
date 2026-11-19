@@ -2,3 +2,12 @@ __pycache__/
 *.pyc
 .env
 *.zip
+
+# Terraform
+.terraform/
+.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+infra/terraform/build/
