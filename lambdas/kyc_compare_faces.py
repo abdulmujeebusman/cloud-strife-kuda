@@ -1,38 +1,45 @@
+import os
+
 import boto3
 
-# Initialize the Amazon Rekognition client
-rekognition = boto3.client('rekognition', region_name='eu-west-1')
+rekognition = boto3.client('rekognition')
+
+# Single source of truth for the match threshold. The state machine and the
+# status Lambda both read the boolean `faceMatch` produced here.
+SIMILARITY_THRESHOLD = float(os.environ.get('SIMILARITY_THRESHOLD', '80'))
+
 
 def lambda_handler(event, context):
     bucket_name = event['bucket']
-    
-    # Steps 5 & 6: Switched from camelCase to snake_case to match incoming event payload
-    id_key      = event['id_key']      
+    id_key      = event['id_key']
     selfie_key  = event['selfie_key']
-    
-    # Call Rekognition to compare the face on the ID card with the selfie image
-    response = rekognition.compare_faces(
-        SourceImage={
-            'S3Object': {
-                'Bucket': bucket_name,
-                'Name': id_key
-            }
-        },
-        TargetImage={
-            'S3Object': {
-                'Bucket': bucket_name,
-                'Name': selfie_key
-            }
-        },
-        SimilarityThreshold=80
+
+    try:
+        response = rekognition.compare_faces(
+            SourceImage={'S3Object': {'Bucket': bucket_name, 'Name': id_key}},
+            TargetImage={'S3Object': {'Bucket': bucket_name, 'Name': selfie_key}},
+            SimilarityThreshold=SIMILARITY_THRESHOLD,
+        )
+    except rekognition.exceptions.InvalidParameterException:
+        # Rekognition raises this when it cannot find a face in one of the
+        # images. That is a failed verification, not a system error.
+        return {
+            **event,
+            "similarity": 0,
+            "faceMatch": False,
+            "reason": "NO_FACE_DETECTED",
+        }
+
+    # Take the best match if Rekognition found several faces
+    similarity = max(
+        (m['Similarity'] for m in response.get('FaceMatches', [])),
+        default=0,
     )
-    
-    # Extract the similarity score safely
-    face_matches = response.get('FaceMatches', [])
-    similarity = face_matches[0]['Similarity'] if face_matches else 0
-    
-    # Return payload containing similarity score for subsequent evaluation steps
+    face_match = similarity >= SIMILARITY_THRESHOLD
+
     return {
         **event,
-        "similarity": similarity
+        "similarity": similarity,
+        "faceMatch": face_match,
+        "reason": "FACE_MATCH_VERIFIED" if face_match else "IDENTITY_MISMATCH_FLAGGED",
     }
